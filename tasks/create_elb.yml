@@ -1,0 +1,33 @@
+---
+- name: Ensure boto, botocore, and boto3 modules are installed
+  pip:
+    name: [ "boto", "boto3", "botocore"]
+    extra_args: "--user"
+
+- name: Copy .boto file
+  template:
+    src: boto.j2
+    dest: .boto
+
+- name: Create classic ELB
+  ec2_elb_lb:  
+    name: "{{ item.name }}"
+    state: present
+    region: "{{ region }}"
+    security_group_ids: "{{ item.sg }}"
+    subnets: "{{ item.subnets }}" 
+    purge_subnets: yes
+    scheme: internal
+    cross_az_load_balancing: "yes"
+    instance_ids: "{{ item.instance_ids }}"
+    purge_instance_ids: true
+    listeners: "{{ item.listeners }} "
+    health_check:
+        ping_protocol: tcp
+        ping_port: 22
+        response_timeout: 5    
+        interval: 30           
+        unhealthy_threshold: 2
+        healthy_threshold: 10
+    tags: "{{ item.tags }}"
+  with_items: "{{ classic_elb }}"

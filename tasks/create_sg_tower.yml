@@ -1,0 +1,53 @@
+---
+- name: Copy .boto file
+  template:
+    src: boto.j2
+    dest: .boto
+
+- name: Ensure boto, botocore, and boto3 modules are installed
+  pip:
+    virtualenv: /var/lib/awx/venv/ansible
+    virtualenv_site_packages: yes
+    name:
+      - boto3
+      - botocore
+    extra_args: --user --trusted-host artifactory.apps.ecicd.dso.ncps.us-cert.gov -i https://artifactory.apps.ecicd.dso.ncps.us-cert.gov/artifactory/api/pypi/pypi-remote/simple
+
+# - name: Delete group by its name
+#   ec2_group:
+#     aws_access_key: "{{ aws_access_key }}"
+#     aws_secret_key: "{{ aws_secret_key }}"
+#     region: "{{ region }}"
+#     name: "{{ security_groups.0.security_group_name }}"
+#     state: absent
+
+# Not currently working
+# - name: Combine
+#   set_fact:
+#     item: "{{ item.update({'ingress': item.ingress + common_ingress}) }}"
+#   loop: "{{ security_groups }}"
+
+# - name: Debug
+#   debug: var=security_groups[0]
+
+# - debug: var=common_ingress
+
+- name: Create security group with inbound and outbound rules
+  https://docs.ansible.com/ansible/latest/modules/ec2_group_module.html
+  ec2_group:
+    ec2_url: "https://{{ ec2_endpoint }}:443"
+    name: "{{ item.security_group_name }}"
+    description: "{{ item.security_group_name }} security group"
+    aws_access_key: "{{ aws_access_key }}"
+    aws_secret_key: "{{ aws_secret_key }}"
+    security_token: "{{ aws_secret_token |default(omit) }}"
+    region: "{{ region }}"
+
+    tags:
+        Name: "{{ item.security_group_name }}"
+
+    rules: "{{ item.ingress }}"          # Inbound  rules IPv4
+    rules_egress: "{{ item.egress }}"    # Outbound rules IPv4 & IPv6
+    vpc_id: "{{ vpc_id }}"
+    state: present
+  loop: "{{ security_groups }}"

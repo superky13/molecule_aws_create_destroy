@@ -1,0 +1,73 @@
+---
+- name: Copy .boto file
+  template:
+    src: boto.j2
+    dest: .boto
+
+- name: Ensure boto, botocore, and boto3 modules are installed
+  pip:
+    virtualenv: /var/lib/awx/venv/ansible
+    virtualenv_site_packages: yes
+    name:
+      - boto3
+      - botocore
+    extra_args: --user --trusted-host artifactory.apps.ecicd.dso.ncps.us-cert.gov -i https://artifactory.apps.ecicd.dso.ncps.us-cert.gov/artifactory/api/pypi/pypi-remote/simple
+
+- name: create ec2 instances 
+  ec2_instance:
+    ec2_url: "https://{{ ec2_endpoint }}:443"
+    aws_access_key: "{{ aws_access_key }}"
+    aws_secret_key: "{{ aws_secret_key }}"
+    security_token: "{{ aws_secret_token |default(omit) }}"
+    key_name: "{{ item.keypair }}"
+    name: "{{ item.name }}"
+    instance_type: "{{ item.instance_type }}"
+    region: "{{ item.region }}"
+    security_groups: "{{ item.security_groups }}"
+    validate_certs: no
+    image_id: "{{ item.image }}"
+    network:
+      private_ip_address: "{{ item.ip }}"
+    vpc_subnet_id: "{{ item.vpc_subnet_id }}"
+    tags: "{{ item.tags }}"
+  register: vmcreate
+  async: 1200 # 20 minutes until timeout
+  poll: 0 # run concurrently
+  with_items:
+  - "{{ servers }}"
+
+- name: Wait for instance creation to complete
+  async_status: jid={{ item.ansible_job_id }}
+  register: ec2_jobs
+  until: ec2_jobs.finished
+  retries: 300
+  with_items: "{{ vmcreate.results }}"
+  ignore_errors: true
+
+# Set a fact that is a new hash, that is all of the servers names, mapped to their instance ID
+# Then in the ec2_vol loop for instance you can just do a lookup on the name
+- name: Create a dictionary of all of the server names and their instance_ids
+  set_fact:
+    server_names: "{{ (server_names | default({})) | combine({ ec2_instance.item.item.name: ec2_instance.instance_ids[0] }) }}"
+  loop: "{{ ec2_jobs.results }}"
+  loop_control:
+    loop_var: ec2_instance
+
+- name: create and attach ebs volumes asynchronously
+  ec2_vol:
+    validate_certs: no
+    aws_access_key: "{{ aws_access_key }}"
+    aws_secret_key: "{{ aws_secret_key }}"
+    ec2_url: "https://{{ ec2_endpoint }}:443"
+    security_token: "{{ aws_secret_token |default(omit) }}"
+    instance: "{{ server_names[server[0].name] }}"
+    device_name: "{{ server[1].name }}"
+    volume_size: "{{ server[1].size }}"
+    region: "{{ region }}"
+    volume_type: "{{ server[1].type }}"
+    delete_on_termination: "{{ server[1].delete | default('yes') }}"
+  register: ebscreate
+  with_items:
+  - "{{ lookup('subelements', servers, 'disks', {'skip_missing': True}) }}"
+  loop_control:
+    loop_var: server

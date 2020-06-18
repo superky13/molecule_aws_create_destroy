@@ -1,0 +1,32 @@
+## molecule create and destroy vars
+ssh_user: ec2-user
+ssh_port: 22
+cuckoo_port: 8000
+cuckoo_api_port: 8090
+security_group_name: molecule
+security_group_description: Security group for testing Molecule
+security_group_rules:
+  - proto: tcp
+    from_port: "{{ ssh_port }}"
+    to_port: "{{ ssh_port }}"
+    cidr_ip: '0.0.0.0/0'
+  - proto: tcp
+    from_port: "{{ cuckoo_port }}"
+    to_port: "{{ cuckoo_port }}"
+    cidr_ip: '0.0.0.0/0'
+  - proto: tcp
+    from_port: "{{ cuckoo_api_port }}"
+    to_port: "{{ cuckoo_api_port }}"
+    cidr_ip: '0.0.0.0/0'
+  - proto: icmp
+    from_port: 8
+    to_port: -1
+    cidr_ip: '0.0.0.0/0'
+security_group_rules_egress:
+  - proto: -1
+    from_port: 0
+    to_port: 0
+    cidr_ip: '0.0.0.0/0'
+keypair_name: molecule_key
+keypair_path: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/ssh_key"
+
